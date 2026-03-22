@@ -24,10 +24,7 @@ All rendered as a **high-quality animated GIF** using the Wigner quasi-probabili
 
 A Schrödinger cat state is defined as:
 
-<p align="center">
-  <img src="https://latex.codecogs.com/png.image?\dpi{160}\large |\psi\rangle \propto |\alpha\rangle + e^{i\phi}|-\alpha\rangle"/>
-</p>
-
+`|ψ⟩ ∝ |α⟩ + e^{iφ}|−α⟩`
 This superposition leads to:
 
 * two coherent-state lobes in phase space
