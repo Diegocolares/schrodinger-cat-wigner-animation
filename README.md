@@ -1,5 +1,10 @@
 # 🐱 Schrödinger Cat State Animation (Cinematic Wigner Visualization)
 
+## 🖼️ Preview
+
+![Schrodinger Cat](cat_state_cinematic_fixed(2).gif)
+
+
 ## 🎬 Overview
 
 This project presents a **cinematic visualization of a Schrödinger cat state** in phase space using Python.
