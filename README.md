@@ -1,7 +1,4 @@
-# 🐱 Schrödinger Cat State Animation (Cinematic Wigner Visualization)
-
-## 🖼️ Preview
-
+# 🐱 Schrödinger Cat State Animation 
 ![Schrodinger Cat](cat_state_cinematic_fixed(2).gif)
 
 
