@@ -1,0 +1,350 @@
+# ============================================================
+# CINEMATIC SCHRODINGER CAT STATE ANIMATION - ROBUST VERSION
+# Google Colab / Jupyter / Python local
+# ============================================================
+
+# No Colab, rode antes se quiser a versão física com QuTiP:
+!pip install -q qutip pillow imageio
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
+from matplotlib.animation import FuncAnimation, PillowWriter
+from matplotlib.colors import LinearSegmentedColormap
+
+# ------------------------------------------------------------
+# CONFIGURAÇÕES GERAIS
+# ------------------------------------------------------------
+GIF_NAME = "cat_state_cinematic_fixed.gif"
+
+FPS = 24
+N_FRAMES = 220
+FIGSIZE = (10, 10)
+DPI = 160
+
+# Espaço de fase
+XMAX = 5.5
+PMAX = 5.5
+GRID = 260
+
+# Estado de gato
+ALPHA_TARGET = 2.35
+PHI = 0.0
+N_FOCK = 42
+
+# Visual
+BG = "#05070d"
+PANEL = "#0c1220"
+TEXT = "#eaf2ff"
+TEXT_SOFT = "#a9b8d0"
+GRID_COLOR = "#7ea6ff"
+
+# ------------------------------------------------------------
+# TENTA USAR QUTIP
+# ------------------------------------------------------------
+HAS_QUTIP = False
+try:
+    from qutip import coherent, ket2dm, wigner
+    HAS_QUTIP = True
+    print("QuTiP detectado: animação física da função de Wigner.")
+except Exception:
+    HAS_QUTIP = False
+    print("QuTiP não detectado: usando aproximação visual de alta qualidade.")
+
+# ------------------------------------------------------------
+# COLORMAP CINEMATOGRÁFICO
+# ------------------------------------------------------------
+cinematic_cmap = LinearSegmentedColormap.from_list(
+    "cinematic_cat",
+    [
+        (0.00, "#08111f"),
+        (0.10, "#12305a"),
+        (0.22, "#1f6aa5"),
+        (0.35, "#4cc9f0"),
+        (0.50, "#f7fbff"),
+        (0.65, "#ffd166"),
+        (0.80, "#ff7b54"),
+        (0.92, "#d1495b"),
+        (1.00, "#67123a"),
+    ]
+)
+
+# ------------------------------------------------------------
+# MALHA
+# ------------------------------------------------------------
+x = np.linspace(-XMAX, XMAX, GRID)
+p = np.linspace(-PMAX, PMAX, GRID)
+X, P = np.meshgrid(x, p)
+
+# ------------------------------------------------------------
+# FUNÇÕES AUXILIARES
+# ------------------------------------------------------------
+def smootherstep(t):
+    t = np.clip(t, 0.0, 1.0)
+    return t**3 * (t * (t * 6 - 15) + 10)
+
+def phase_schedule(k, n_frames=N_FRAMES):
+    """
+    narrativa do loop:
+    0-22%   separação
+    22-58%  interferência
+    58-82%  decoerência
+    82-100% recombinação
+    """
+    u = k / (n_frames - 1)
+
+    if u < 0.22:
+        sep = smootherstep(u / 0.22)
+        coh = 0.12 * sep
+    elif u < 0.58:
+        sep = 1.0
+        coh = 0.12 + 0.88 * smootherstep((u - 0.22) / 0.36)
+    elif u < 0.82:
+        sep = 1.0
+        coh = 1.0 - smootherstep((u - 0.58) / 0.24)
+    else:
+        r = smootherstep((u - 0.82) / 0.18)
+        sep = 1.0 - r
+        coh = 0.0
+
+    alpha = ALPHA_TARGET * sep
+    return u, alpha, coh
+
+def stage_name(u):
+    if u < 0.22:
+        return "State splitting"
+    elif u < 0.58:
+        return "Quantum interference"
+    elif u < 0.82:
+        return "Decoherence"
+    return "Recombination"
+
+def gaussian_packet(X, P, x0, p0, sigma=1.0):
+    return np.exp(-((X - x0) ** 2 + (P - p0) ** 2) / sigma)
+
+def cat_wigner_approx(X, P, alpha, coherence, phi=0.0):
+    """
+    Aproximação visual estável do estado de gato no espaço de fase.
+    """
+    x0 = np.sqrt(2.0) * alpha
+
+    Wp = gaussian_packet(X, P, +x0, 0.0, sigma=1.0)
+    Wm = gaussian_packet(X, P, -x0, 0.0, sigma=1.0)
+
+    env_center = np.exp(-(X**2 / 1.2 + P**2 / 1.3))
+    fringes = np.cos(2.9 * x0 * P + phi)
+
+    Winterf = 2.2 * coherence * env_center * fringes
+    W = Wp + Wm + Winterf
+
+    W /= np.max(np.abs(W)) + 1e-12
+    return W
+
+def cat_wigner_qutip(alpha, coherence, phi=0.0, n=N_FOCK):
+    ket_p = coherent(n, alpha)
+    ket_m = coherent(n, -alpha)
+
+    psi = ket_p + np.exp(1j * phi) * ket_m
+    psi = psi.unit()
+
+    rho_cat = ket2dm(psi)
+    rho_mix = 0.5 * ket2dm(ket_p) + 0.5 * ket2dm(ket_m)
+    rho = coherence * rho_cat + (1.0 - coherence) * rho_mix
+
+    W = wigner(rho, x, p)
+    W /= np.max(np.abs(W)) + 1e-12
+    return W
+
+def build_wigner(alpha, coherence, phi=0.0):
+    if HAS_QUTIP:
+        try:
+            return cat_wigner_qutip(alpha, coherence, phi)
+        except Exception:
+            return cat_wigner_approx(X, P, alpha, coherence, phi)
+    return cat_wigner_approx(X, P, alpha, coherence, phi)
+
+# ------------------------------------------------------------
+# FIGURA
+# ------------------------------------------------------------
+fig = plt.figure(figsize=FIGSIZE, dpi=DPI, facecolor=BG)
+ax = fig.add_axes([0.08, 0.08, 0.84, 0.84])
+ax.set_facecolor(PANEL)
+
+for spine in ax.spines.values():
+    spine.set_color("#8fb8ff")
+    spine.set_alpha(0.20)
+    spine.set_linewidth(1.2)
+
+ax.set_xlim(-XMAX, XMAX)
+ax.set_ylim(-PMAX, PMAX)
+ax.set_xticks(np.arange(-4, 5, 2))
+ax.set_yticks(np.arange(-4, 5, 2))
+ax.tick_params(colors=TEXT_SOFT, labelsize=11, length=0)
+
+ax.grid(True, color=GRID_COLOR, alpha=0.08, linewidth=0.8)
+ax.set_xlabel("Quadrature x", color=TEXT, fontsize=13, labelpad=10)
+ax.set_ylabel("Quadrature p", color=TEXT, fontsize=13, labelpad=10)
+
+title = ax.set_title(
+    "Schrödinger Cat State",
+    color=TEXT,
+    fontsize=20,
+    pad=18,
+    fontweight="semibold",
+)
+
+# Fundo radial suave
+R = np.sqrt((X / XMAX) ** 2 + (P / PMAX) ** 2)
+radial = np.clip(1 - R, 0, 1)
+
+ax.imshow(
+    radial,
+    extent=[-XMAX, XMAX, -PMAX, PMAX],
+    origin="lower",
+    cmap="Blues",
+    alpha=0.08,
+    interpolation="bilinear",
+    zorder=0
+)
+
+u0, a0, c0 = phase_schedule(0)
+W0 = build_wigner(a0, c0, PHI)
+
+# Camada principal
+im = ax.imshow(
+    W0,
+    extent=[-XMAX, XMAX, -PMAX, PMAX],
+    origin="lower",
+    cmap=cinematic_cmap,
+    vmin=-1,
+    vmax=1,
+    interpolation="bicubic",
+    alpha=0.96,
+    zorder=2
+)
+
+# Glow
+glow = ax.imshow(
+    np.abs(W0),
+    extent=[-XMAX, XMAX, -PMAX, PMAX],
+    origin="lower",
+    cmap="magma",
+    interpolation="bilinear",
+    alpha=0.14,
+    zorder=1
+)
+
+# Contornos fixos
+ax.contour(
+    X, P, W0,
+    levels=np.linspace(-0.85, 0.85, 12),
+    colors="white",
+    linewidths=0.55,
+    alpha=0.14,
+    zorder=3
+)
+
+# Região negativa destacada
+neg_mask0 = np.ma.masked_where(W0 >= -0.02, W0)
+neg_im = ax.imshow(
+    neg_mask0,
+    extent=[-XMAX, XMAX, -PMAX, PMAX],
+    origin="lower",
+    cmap="winter",
+    interpolation="bilinear",
+    alpha=0.22,
+    zorder=4
+)
+
+ax.axhline(0, color="white", alpha=0.08, linewidth=1.0, zorder=0)
+ax.axvline(0, color="white", alpha=0.08, linewidth=1.0, zorder=0)
+
+txt_stage = ax.text(
+    0.03, 0.965, "",
+    transform=ax.transAxes,
+    ha="left", va="top",
+    color=TEXT, fontsize=12,
+    bbox=dict(
+        boxstyle="round,pad=0.4",
+        facecolor=(0.02, 0.04, 0.08, 0.55),
+        edgecolor=(0.7, 0.82, 1.0, 0.16),
+        linewidth=1.0
+    ),
+    zorder=5
+)
+
+txt_info = ax.text(
+    0.03, 0.06, "",
+    transform=ax.transAxes,
+    ha="left", va="bottom",
+    color=TEXT_SOFT, fontsize=10.5,
+    linespacing=1.35,
+    bbox=dict(
+        boxstyle="round,pad=0.45",
+        facecolor=(0.02, 0.04, 0.08, 0.48),
+        edgecolor=(0.7, 0.82, 1.0, 0.14),
+        linewidth=1.0
+    ),
+    zorder=5
+)
+
+ax.text(
+    0.985, 0.025,
+    "looping phase-space visualization",
+    transform=ax.transAxes,
+    ha="right", va="bottom",
+    color=(0.85, 0.90, 1.0, 0.42),
+    fontsize=9,
+    zorder=5
+)
+
+# ------------------------------------------------------------
+# ANIMAÇÃO
+# ------------------------------------------------------------
+def update(frame):
+    u, alpha, coherence = phase_schedule(frame)
+    W = build_wigner(alpha, coherence, PHI)
+
+    im.set_data(W)
+    glow.set_data(np.abs(W))
+    glow.set_alpha(0.10 + 0.10 * coherence)
+
+    neg_mask = np.ma.masked_where(W >= -0.02, W)
+    neg_im.set_data(neg_mask)
+    neg_im.set_alpha(0.12 + 0.18 * coherence)
+
+    txt_stage.set_text(stage_name(u))
+    txt_stage.set_path_effects([
+        pe.withStroke(linewidth=4, foreground=(0, 0, 0, 0.25))
+    ])
+
+    txt_info.set_text(
+        f"displacement α  = {alpha:0.2f}\n"
+        f"coherence      = {coherence:0.2f}\n"
+        f"relative phase = {PHI:0.2f} rad"
+    )
+
+    title.set_alpha(0.92 + 0.08 * np.sin(2 * np.pi * u))
+
+    return [im, glow, neg_im, txt_stage, txt_info]
+
+anim = FuncAnimation(
+    fig,
+    update,
+    frames=N_FRAMES,
+    interval=1000 / FPS,
+    blit=False,
+    repeat=True
+)
+
+# ------------------------------------------------------------
+# EXPORTAÇÃO
+# ------------------------------------------------------------
+anim.save(
+    GIF_NAME,
+    writer=PillowWriter(fps=FPS),
+    dpi=DPI
+)
+
+plt.close(fig)
+print(f"GIF salvo como: {GIF_NAME}")
