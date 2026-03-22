@@ -25,7 +25,7 @@ All rendered as a **high-quality animated GIF** using the Wigner quasi-probabili
 A Schrödinger cat state is defined as:
 
 <p align="center">
-  <img src="https://latex.codecogs.com/png.image?\dpi{150}|\psi\rangle \propto |\alpha\rangle + e^{i\phi}|-\alpha\rangle"/>
+  <img src="https://latex.codecogs.com/png.image?\dpi{160}\large |\psi\rangle \propto |\alpha\rangle + e^{i\phi}|-\alpha\rangle"/>
 </p>
 
 This superposition leads to:
